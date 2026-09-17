@@ -1,0 +1,6 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild "“L1" "demo.xcodeproj”" "“L1" "demo”" platform=iOS,id=00008120-000965912210C01E
+
+Build settings from command line:
+    platform = iOS,id=00008120-000965912210C01E
+
