@@ -1,18 +1,20 @@
+//LibraryManager.swift
 import Foundation
 import Combine
 
-struct Playlist{
-	var name : String = "new playlist"
+struct Playlist : Codable{
+	var name : String = Constants.NewPlaylistName
 	var songs : [String] = []
 }
 
 final class LibraryManager: ObservableObject {
 	static let shared = LibraryManager()
 
-	@Published var serverBaseURL: String = UserDefaults.standard.string(forKey: "serverBaseURL") ?? ""
+	@Published var serverBaseURL: String = UserDefaults.standard.string(forKey: Constants.ServerURL) ?? ""
 
 	//@Published var songs: [String] = []      // filenames already downloaded on-device
-	@Published var library: [Playlist] = [Playlist()]
+	@Published var library: [Playlist] = []
+	@Published var queue: [String] = []
 	@Published var isSyncing = false
 	@Published var syncError: String?
 
@@ -21,12 +23,14 @@ final class LibraryManager: ObservableObject {
 	}()
 
 	private init() {
+		library.append(Playlist(name: Constants.ConstantSongListName["AllSongsList"] ?? Constants.NameNotFound,songs: []))
+		library.append(Playlist(name: Constants.ConstantSongListName["UnSortedList"] ?? Constants.NameNotFound,songs: []))
 		refreshLocalSongs()
 	}
 
 	func setServerURL(_ url: String) {
 		serverBaseURL = url
-		UserDefaults.standard.set(url, forKey: "serverBaseURL")
+		UserDefaults.standard.set(url, forKey: Constants.ServerURL)
 	}
 
 	func localFileURL(for filename: String) -> URL {
@@ -35,9 +39,20 @@ final class LibraryManager: ObservableObject {
 
 	func refreshLocalSongs() {
 		let files = (try? FileManager.default.contentsOfDirectory(atPath: documentsDirectory.path)) ?? []
-		//songs = files.filter { $0.hasSuffix(".mp3") }.sorted()
 		library[0].songs=files.filter { $0.hasSuffix(".mp3") }.sorted()
-		library[0].name="testing playlist"
+		loadlibrary()
+		UpdateUnassignedSongList()
+	}
+	func UpdateUnassignedSongList(){
+		library[1].songs=library[0].songs
+		library.dropFirst(Constants.PreSetPlaylistCount).forEach{
+			for song in $0.songs{
+				if let index = library[1].songs.firstIndex(of: song){
+					library[1].songs.remove(at: index)
+					print(index, song, separator: ", ")
+				}
+			}
+		}
 	}
 
 	/// Fetches the list of mp3s available on the Mac, downloads anything
@@ -45,7 +60,7 @@ final class LibraryManager: ObservableObject {
 	@MainActor
 	func sync() async {
 		guard !serverBaseURL.isEmpty, let base = URL(string: serverBaseURL) else {
-			syncError = "No server address set."
+			syncError = Constants.NoServerAddress
 			return
 		}
 
@@ -97,4 +112,43 @@ final class LibraryManager: ObservableObject {
 			: base.absoluteString
 		return URL(string: "\(trimmedBase)/files/\(encoded)")
 	}
+	public func movelibrary(songname song: String, from oldlis: String,to newlis: String){
+		if let index=library.firstIndex(where: {$0.name==newlis}), Constants.ConstantSongListName.values.contains(library[index].name){
+			library[index].songs.append(song)
+			library[index].songs = Array(Set(library[index].songs)).sorted()
+		}
+		if let index=library.firstIndex(where: {$0.name==oldlis}), Constants.ConstantSongListName.values.contains(library[index].name){
+			library[index].songs.removeAll { $0 == song}
+			library[index].songs = Array(Set(library[index].songs)).sorted()
+		}
+		savelibrary()
+		UpdateUnassignedSongList()
+	}
+	public func savelibrary(){
+		let tosave = Array(library.dropFirst(Constants.PreSetPlaylistCount))
+		if let data = try? JSONEncoder().encode(tosave){
+			try? data.write(to: localFileURL(for: Constants.PlaylistFilename))
+		}
+	}
+	public func loadlibrary(){
+		guard let data = try? Data(contentsOf: localFileURL(for: Constants.PlaylistFilename)),
+			let decoded = try? JSONDecoder().decode([Playlist].self, from: data) else {return}
+		library=Array(library.prefix(Constants.PreSetPlaylistCount))+decoded
+	}
+	public func removesong(songname song: String, from oldlis: String){
+		if let index=library.firstIndex(where: {$0.name==oldlis}), Constants.ConstantSongListName.values.contains(library[index].name){
+			library[index].songs.removeAll { $0 == song}
+			library[index].songs = Array(Set(library[index].songs)).sorted()
+		}
+		savelibrary()
+		UpdateUnassignedSongList()
+	}
+	public func addplaylist(name playlistname: String){
+		library.append(Playlist(name: playlistname,songs: []))
+	}
+//	public func clearemptylist(){
+//		for playlist in library.filter{$0.songs.isEmpty && !Constants.ConstantSongListName.values.contains($0.name)}{
+//			//do sth
+//		}
+//	}
 }

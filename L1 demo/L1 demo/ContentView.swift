@@ -5,7 +5,7 @@ struct ContentView: View {
 	@StateObject private var library = LibraryManager.shared
 	
 	@State private var serverURLInput: String = LibraryManager.shared.serverBaseURL
-	
+	@State private var PlaylistInputName: String = ""
 	var body: some View {
 		NavigationStack {
 			VStack(spacing: 0) {
@@ -58,7 +58,23 @@ struct ContentView: View {
 						showsonglist(list: list)
 					}
 				}
-
+				HStack{
+					TextField("playlist name", text: $PlaylistInputName)
+						.textFieldStyle(.roundedBorder)
+						.autocorrectionDisabled(true)
+						.textInputAutocapitalization(.never)
+						.padding(.horizontal)
+					Spacer()
+					Button(){
+						library.addplaylist(name: PlaylistInputName)
+					} label:{
+						Text(Constants.AddNewPlaylist)
+					}
+					.frame(width:100, height: 50)
+					.foregroundStyle(.black)
+					.bold()
+					.padding(.horizontal)
+				}
 				Divider()
 				
 				//song currently played controls
@@ -78,22 +94,27 @@ struct ContentView: View {
 				.ignoresSafeArea()
 				.frame(maxWidth: .infinity, alignment: .leading)
 			if list.songs.isEmpty{
-				Text("no media imported")
+				Text(Constants.NoSongsError)
 			}else{
 				List(list.songs, id: \.self) { filename in
 					Button {
 						let url = library.localFileURL(for: filename)
 						audio.loadTrack(url: url, title: filename)
+						audio.currentPlaylist = list.name
+						audio.Createqueue(songlist: list.songs, CurrentSong: filename)
 					} label: {
 						HStack {
 							Text(filename)
 								.lineLimit(1)
 							Spacer()
 							if audio.currentTitle == filename {
-								Image(systemName: "speaker.wave.2.fill")
+								Image(systemName: audio.isPlaying ? "speaker.wave.2.fill" : "speaker.fill")
 									.foregroundStyle(.blue)
+									.frame(width: 18, height: 15)
 							}
 						}
+					}.contextMenu{
+						multioptionsmenu(list: list, filename: filename)
 					}
 				}
 				.listStyle(.plain)
@@ -104,12 +125,31 @@ struct ContentView: View {
 				.padding()
 		}
 	}
+	@ViewBuilder
+	private func multioptionsmenu(list : Playlist, filename : String) -> some View{
+		ForEach(library.library.filter { !$0.songs.contains(filename) }, id: \.name){ playlist in
+			Button{
+				library.movelibrary(songname: filename, from: list.name, to: playlist.name)
+			} label:{
+				Text(playlist.name)
+			}
+		}
+		if(list.name != Constants.ConstantSongListName["AllSongsList"]){
+			Button(role: .destructive){
+				library.removesong(songname: filename, from: list.name)
+			} label:{
+				Label(Constants.RemoveSongFromPlaylist, systemImage: "trash")
+			}
+		}
+	}
 	private var playerControls: some View {
-		VStack() {
+		VStack(spacing: 0) {
 			Text(audio.currentTitle)
 				.font(.headline)
 				.lineLimit(1)
-			
+			Text(audio.currentPlaylist)
+				.font(.caption)
+				.lineLimit(1)
 			VStack(spacing: 4) {
 				Slider(
 					value: Binding(
@@ -126,14 +166,53 @@ struct ContentView: View {
 				.font(.caption2)
 				.foregroundStyle(.secondary)
 			}
-			
-			Button {
-				audio.togglePlayPause()
-			} label: {
-				Image(systemName: audio.isPlaying ? "pause.circle" : "play.circle.fill")
-					.font(.system(size: 45))
+			HStack(spacing:23){
+				Button {
+					audio.ToggleShuffleRepeat()
+					if let index=library.library.firstIndex(where: {$0.name==audio.currentPlaylist}){
+						audio.Createqueue(songlist: library.library[index].songs, CurrentSong: audio.currentTitle)
+					}
+				} label: {
+					Image(systemName: audio.PlayMode==Constants.Shuffle ? "shuffle" : "repeat")
+						.font(.system(size: 27))
+						.frame(width: 30, height: 30)
+				}
+				.buttonStyle(.plain)
+				.padding()
+				
+				Button {
+					//back
+				} label: {
+					Image(systemName: "backward.end")
+						.font(.system(size: 32))
+				}
+				.buttonStyle(.plain)
+				
+				Button {
+					audio.togglePlayPause()
+				} label: {
+					Image(systemName: audio.isPlaying ? "pause.circle" : "play.circle.fill")
+						.font(.system(size: 45))
+				}
+				.buttonStyle(.plain)
+				
+				Button {
+					//forward
+				} label: {
+					Image(systemName: "forward.end")
+						.font(.system(size: 32))
+				}
+				.buttonStyle(.plain)
+				
+				Button {
+					//queue
+				} label: {
+					Image(systemName: "text.insert")
+						.font(.system(size: 27))
+				}
+				.buttonStyle(.plain)
+				.padding()
 			}
-			.buttonStyle(.plain)
 		}
 	}
 	private func formatTime(_ seconds: Double) -> String {

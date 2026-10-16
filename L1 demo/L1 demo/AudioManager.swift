@@ -1,15 +1,21 @@
+//AudioManager.swift
+import SwiftUI
 import Foundation
 import AVFoundation
 import MediaPlayer
 import Combine
+import Algorithms
 
 final class AudioManager: ObservableObject {
+	private let library = LibraryManager.shared
 	static let shared = AudioManager()
 	@Published var isPlaying = false
 	@Published var currentTime: Double = 0
 	@Published var duration: Double = 0
-	@Published var currentTitle: String = "No song selected"
-	@Published var queue: [Int] = []
+	@Published var currentTitle: String = Constants.NoSongSelected
+	@Published var currentPlaylist: String = Constants.NoPlaylistSelected
+	@Published var queue: [String] = []
+	@Published var PlayMode: String = Constants.Shuffle //Shuffle Repeat
 
 	private var player: AVPlayer?
 	private var timeObserverToken: Any?
@@ -67,7 +73,7 @@ final class AudioManager: ObservableObject {
 					self?.duration = item.duration.seconds
 					self?.updateNowPlayingInfo()
 				} else if status == .failed {
-					print("Playback failed: \(item.error?.localizedDescription ?? "unknown error")")
+					print("Playback failed: \(item.error?.localizedDescription ?? Constants.UnknownError)")
 				}
 			}
 
@@ -85,14 +91,31 @@ final class AudioManager: ObservableObject {
 
 		play()
 	}
-
+	
+	
+	
 	private func trackDidFinish() {
-		player?.seek(to: .zero)
-		player?.play()   // loop — remove this line if you'd rather it just stop
+//		player?.seek(to: .zero)
+//		player?.play()
+		queue=Array(queue.dropFirst())
+		let url = library.localFileURL(for: queue[0])
+		loadTrack(url: url, title: queue[0])
 		isPlaying = true
 		updateNowPlayingInfo()
+		print(queue)
 	}
 
+	func ToggleShuffleRepeat(){
+		PlayMode == Constants.Shuffle ? RepeatMode() : ShuffleMode()
+	}
+	
+	func ShuffleMode(){
+		PlayMode = Constants.Shuffle
+	}
+	
+	func RepeatMode(){
+		PlayMode = Constants.Repeat
+	}
 	// MARK: - Transport controls
 
 	func togglePlayPause() {
@@ -117,6 +140,18 @@ final class AudioManager: ObservableObject {
 		currentTime = seconds
 		updateNowPlayingInfo()
 	}
+	
+	func Createqueue(songlist songs : [String], CurrentSong song : String){
+		queue=songs
+		if PlayMode == Constants.Shuffle{
+			queue.shuffle()
+		}
+		if let songindex=queue.firstIndex(of: song){
+			queue.rotate(toStartAt: songindex)
+			print(songindex)
+		}
+		print(queue)
+	}
 
 	// MARK: - AirPods / lock screen / Control Center integration
 
@@ -136,7 +171,10 @@ final class AudioManager: ObservableObject {
 		// TODO: once the library has multiple songs, wire these to
 		// advance through LibraryManager.songs instead of restarting.
 		commandCenter.nextTrackCommand.addTarget { [weak self] _ in
-			self?.seek(to: 0); self?.play(); return .success
+			if let toseek=self?.duration{
+				self?.seek(to: toseek); self?.play(); return .success
+			}
+			return.commandFailed
 		}
 		commandCenter.previousTrackCommand.addTarget { [weak self] _ in
 			self?.seek(to: 0); self?.play(); return .success
@@ -165,3 +203,4 @@ final class AudioManager: ObservableObject {
 		}
 	}
 }
+
